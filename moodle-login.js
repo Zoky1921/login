@@ -1,120 +1,41 @@
-const puppeteer = require('puppeteer');
-const fs = require('fs');
+name: Moodle Auto Login
 
-(async () => {
-  const SCREENSHOTS_DIR = 'capturas/';
-  fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+on:
+  schedule:
+    - cron: '0 11 * * *'  # 8 AM Argentina (UTC-3)
+    - cron: '0 23 * * *'  # 8 PM Argentina (UTC-3)
+  workflow_dispatch:
 
-  const browser = await puppeteer.launch({
-    headless: false,  // Cambiado a false para debug
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ],
-    timeout: 60000
-  });
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 800 });
+    steps:
+      - uses: actions/checkout@v4
 
-  // Configurar User-Agent para parecer un navegador real
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
 
-  try {
-    // 1. Limpiar cookies y almacenamiento
-    console.log('🧹 Limpiando cookies y almacenamiento...');
-    await page.deleteCookie();
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgbm-dev wget libxshmfence-dev libnss3-dev
+          npm install puppeteer --no-package-lock
+          mkdir -p capturas
 
-    // 2. Ir directamente a la página de login
-    console.log('🔐 Navegando a la página de login...');
-    await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
-      waitUntil: 'networkidle2',
-      timeout: 60000
-    });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}0-pagina-login.png` });
+      - name: Run Moodle Bot
+        run: node moodle-login.js
+        env:
+          MOODLE_USER: ${{ secrets.MOODLE_USER }}
+          MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
+          MOODLE_URL: ${{ secrets.MOODLE_URL }}
 
-    // 3. Rellenar credenciales
-    console.log('⌨️ Escribiendo credenciales...');
-    await page.type('#username', process.env.MOODLE_USER, { delay: 100 });
-    await page.type('#password', process.env.MOODLE_PASS, { delay: 100 });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}1-credenciales-llenadas.png` });
-
-    // 4. Enviar formulario
-    console.log('🚀 Enviando formulario...');
-    await Promise.all([
-      page.click('#loginbtn'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
-    ]);
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}2-post-login.png` });
-
-    // 5. Verificación EXPLÍCITA de login exitoso
-    const urlPostLogin = page.url();
-    if (urlPostLogin.includes('login') || await page.$('#loginerrormessage')) {
-      throw new Error('Error en el login - Redirigido a página de login');
-    }
-    console.log(`✅ Login exitoso - URL actual: ${urlPostLogin}`);
-
-    // 6. Captura del dashboard
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}3-dashboard.png` });
-    console.log('📸 Captura del dashboard guardada');
-
-    // 7. Navegar a "Mis cursos"
-    console.log('📚 Navegando a "Mis cursos"...');
-    await page.goto(`${process.env.MOODLE_URL}/my/`, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}4-listado-cursos.png` });
-
-    // 8. Procesar cursos
-    const cursos = await page.$$eval('a.aalink.coursename', links => 
-      links
-        .filter(link => link.textContent.includes('Prevención y Abordaje'))
-        .map(link => ({
-          nombre: link.textContent.trim(),
-          url: link.href,
-          id: new URL(link.href).searchParams.get('id') || '0'
-        }))
-    );
-
-    console.log(`🔍 Encontrados ${cursos.length} cursos`);
-    
-    for (const [index, curso] of cursos.entries()) {
-      console.log(`\n🔄 [${index + 1}] Procesando: ${curso.nombre}`);
-      
-      try {
-        // 9. Navegar al curso
-        await page.goto(curso.url, {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-        
-        // 10. Verificar contenido del curso
-        await page.waitForSelector('#region-main', { timeout: 15000 });
-        await page.screenshot({
-          path: `${SCREENSHOTS_DIR}5-curso-${index + 1}-${curso.id}.png`,
-          fullPage: true
-        });
-        console.log(`📸 Captura del curso guardada`);
-
-      } catch (error) {
-        console.error(`⚠️ Error en curso ${curso.nombre}:`, error.message);
-        await page.screenshot({ path: `${SCREENSHOTS_DIR}error-curso-${index + 1}.png` });
-      }
-      
-      await page.waitForTimeout(2000);
-    }
-
-  } catch (error) {
-    console.error('❌ Error crítico:', error);
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}error-final.png` });
-  } finally {
-    await browser.close();
-    console.log('🏁 Proceso completado');
-  }
-})();
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: moodle-screenshots
+          path: capturas/*.png
+          if-no-files-found: warn
