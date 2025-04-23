@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgbm-dev wget
+          sudo apt-get install -y libgbm-dev wget libxshmfence-dev libnss3-dev
           npm install puppeteer --no-package-lock
           mkdir -p capturas
 
