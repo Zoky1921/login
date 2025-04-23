@@ -1,0 +1,24 @@
+name: Moodle Auto Login
+
+on:
+  schedule:
+    - cron: '0 7 * * *'    # Ejecuta todos los días a las 7 AM
+  workflow_dispatch:        # Permite ejecución manual
+
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install puppeteer
+      - name: Run Moodle Login
+        run: node moodle-login.js
+        env:
+          MOODLE_USER: ${{ secrets.MOODLE_USER }}
+          MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
+          MOODLE_URL: ${{ secrets.MOODLE_URL }}
