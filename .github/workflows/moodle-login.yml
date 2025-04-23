@@ -2,30 +2,31 @@ name: Moodle Auto Login
 
 on:
   schedule:
-    - cron: '0 11 * * *'  # 11 AM UTC = 8 AM Argentina (UTC-3)
-    - cron: '0 23 * * *'  # 11 PM UTC = 8 PM Argentina (UTC-3)
-  workflow_dispatch:      # Permite ejecución manual
+    - cron: '0 11 * * *'  # 8 AM Argentina
+    - cron: '0 23 * * *'  # 8 PM Argentina
+  workflow_dispatch:
 
 jobs:
   login:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    
-    - name: Install dependencies
-      run: |
-        npm install puppeteer@latest
-        sudo apt-get update
-        sudo apt-get install -y wget libgbm-dev
-    
-    - name: Run Moodle Login
-      run: node moodle-login.js
-      env:
-        MOODLE_USER: ${{ secrets.MOODLE_USER }}
-        MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
-        MOODLE_URL: ${{ secrets.MOODLE_URL }}
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install puppeteer
+      - name: Run Login
+        run: node moodle-login.js
+        env:
+          MOODLE_USER: ${{ secrets.MOODLE_USER }}
+          MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
+          MOODLE_URL: ${{ secrets.MOODLE_URL }}
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v3
+        with:
+          name: capturas-cursos
+          path: |
+            curso-*.png
+            error.png
