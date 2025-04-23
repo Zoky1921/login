@@ -2,84 +2,99 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 (async () => {
-  // Configuración
   const screenshotBasePath = 'screenshots/';
   fs.mkdirSync(screenshotBasePath, { recursive: true });
 
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    timeout: 120000 // 2 minutos para inicio del navegador
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   const page = await browser.newPage();
-  
+  await page.setViewport({ width: 1280, height: 800 });
+
   try {
-    console.log('🔹 Iniciando proceso...');
+    // 1. Login (rápido)
+    await login(page);
     
-    // 1. Login rápido con verificación
-    console.log('🔐 Realizando login...');
-    await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
-      waitUntil: 'networkidle2',
-      timeout: 60000
-    });
-    
-    await page.type('#username', process.env.MOODLE_USER);
-    await page.type('#password', process.env.MOODLE_PASS);
-    await Promise.all([
-      page.click('#loginbtn'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
-    ]);
-
-    // Verificación inmediata de login
-    if (page.url().includes('login')) {
-      throw new Error('Login fallido - Redirigido a página de login');
-    }
-    console.log('✅ Login exitoso');
-    await page.screenshot({ path: `${screenshotBasePath}1_dashboard.png` });
-
-    // 2. Navegación rápida a cursos
-    console.log('📚 Buscando cursos...');
-    await page.goto(`${process.env.MOODLE_URL}/my/`, {
+    // 2. Ir a "Mis cursos"
+    await page.goto(`${process.env.MOODLE_URL}/my/`, { 
       waitUntil: 'networkidle2',
       timeout: 30000
     });
+    await page.screenshot({ path: `${screenshotBasePath}0-dashboard.png` });
 
-    // 3. Procesamiento acelerado de cursos
-    const cursos = await page.$$eval('a.aalink.coursename', links => 
-      links
-        .filter(link => link.textContent.includes('Prevención y Abordaje'))
-        .map(link => ({
-          nombre: link.textContent.trim().substring(0, 30).replace(/[^a-z0-9]/gi, '_'),
-          url: link.href
-        }))
-    );
+    // 3. Buscar y procesar cursos
+    const cursos = await getCourses(page);
+    console.log(`📚 Cursos encontrados: ${cursos.length}`);
 
-    console.log(`🔄 Encontrados ${cursos.length} cursos - Procesando...`);
-    
     for (const [index, curso] of cursos.entries()) {
-      const startTime = Date.now();
-      console.log(`\n📂 Curso ${index + 1}/${cursos.length}: ${curso.nombre}`);
-      
-      // Navegación con timeout corto
-      await page.goto(curso.url, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
-
-      // Captura inmediata
-      await page.screenshot({
-        path: `${screenshotBasePath}2_curso_${index + 1}.png`,
-        fullPage: false
-      });
-      console.log(`📸 Captura tomada en ${(Date.now() - startTime)/1000} segundos`);
+      await processCourse(page, curso, index, screenshotBasePath);
     }
 
   } catch (error) {
-    console.error('❌ Error:', error);
-    await page.screenshot({ path: `${screenshotBasePath}error.png` });
+    console.error('❌ Error general:', error);
+    await page.screenshot({ path: `${screenshotBasePath}error-general.png` });
   } finally {
     await browser.close();
-    console.log('🏁 Proceso finalizado');
   }
 })();
+
+// Funciones auxiliares
+async function login(page) {
+  await page.goto(`${process.env.MOODLE_URL}/login/index.php`, { 
+    waitUntil: 'networkidle2',
+    timeout: 60000
+  });
+  await page.type('#username', process.env.MOODLE_USER);
+  await page.type('#password', process.env.MOODLE_PASS);
+  await page.click('#loginbtn');
+  await page.waitForNavigation({ waitUntil: 'networkidle2' });
+  console.log('✅ Login exitoso');
+}
+
+async function getCourses(page) {
+  return await page.$$eval('a.aalink.coursename', links => 
+    links
+      .filter(link => link.textContent.includes('Prevención y Abordaje'))
+      .map(link => ({
+        nombre: link.textContent.trim(),
+        url: link.href,
+        id: link.href.match(/id=(\d+)/)?.[1] || '0'
+      }))
+  );
+}
+
+async function processCourse(page, curso, index, path) {
+  try {
+    console.log(`\n🔄 [${index + 1}] Ingresando a: ${curso.nombre}`);
+    
+    // Ir al curso y esperar contenido
+    await page.goto(curso.url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#region-main', { timeout: 15000 });
+    
+    // Captura inteligente (solo área de contenido)
+    await page.screenshot({
+      path: `${path}${index + 1}-[${curso.id}]_${curso.nombre.substring(0, 20)}.png`,
+      clip: await getMainContentArea(page)
+    });
+    
+    console.log(`📸 Captura guardada: ${index + 1}-[${curso.id}]_${curso.nombre.substring(0, 20)}.png`);
+
+  } catch (error) {
+    console.error(`⚠️ Error en curso ${curso.nombre}:`, error.message);
+    await page.screenshot({ path: `${path}error-${index + 1}-${curso.id}.png` });
+  }
+}
+
+async function getMainContentArea(page) {
+  return await page.$eval('#region-main', el => {
+    const rect = el.getBoundingClientRect();
+    return {
+      x: Math.max(rect.x, 0),
+      y: Math.max(rect.y, 0),
+      width: Math.min(rect.width, window.innerWidth),
+      height: Math.min(rect.height, window.innerHeight)
+    };
+  });
+}
