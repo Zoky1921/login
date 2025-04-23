@@ -26,7 +26,7 @@ jobs:
           npm install puppeteer --no-package-lock
           mkdir -p capturas
 
-      - name: Run Moodle Login Bot
+      - name: Run Moodle Bot
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
