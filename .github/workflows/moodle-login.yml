@@ -1,7 +1,7 @@
 name: Moodle Auto Login
 
 on:
-  workflow_dispatch:  # Solo ejecución manual hasta que funcione
+  workflow_dispatch:  # Ejecución manual para pruebas
 
 jobs:
   login:
@@ -23,7 +23,7 @@ jobs:
           npm install puppeteer@19.11.1 --no-package-lock
           mkdir -p capturas
 
-      - name: Run Moodle Bot (Debug Mode)
+      - name: Run Moodle Bot
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
@@ -34,6 +34,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: moodle-debug-data
-          path: |
-            capturas/*.png
-            capturas/*.html
+          path: capturas/*
