@@ -17,6 +17,8 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm install puppeteer
+      - name: Create screenshots folder
+        run: mkdir -p screenshots
       - name: Run Login
         run: node moodle-login.js
         env:
@@ -24,9 +26,8 @@ jobs:
           MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
           MOODLE_URL: ${{ secrets.MOODLE_URL }}
       - name: Upload screenshots
-        uses: actions/upload-artifact@v4  # Changed from v3 to v4
+        uses: actions/upload-artifact@v4
         with:
           name: capturas-cursos
-          path: |
-            curso-*.png
-            error.png
+          path: screenshots/*.png
+        if: always()  # Sube artifacts aunque falle
