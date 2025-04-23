@@ -10,7 +10,12 @@ const fs = require('fs');
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu'
     ],
     timeout: 60000
   });
@@ -19,44 +24,30 @@ const fs = require('fs');
   await page.setViewport({ width: 1280, height: 800 });
 
   try {
-    // 1. Limpieza básica (sin localStorage)
-    console.log('🧹 Limpiando cookies...');
+    // 1. Limpieza de cookies
+    console.log('🧹 Limpiando cookies anteriores...');
     const client = await page.target().createCDPSession();
     await client.send('Network.clearBrowserCookies');
     await client.send('Network.clearBrowserCache');
 
-    // 2. Navegación a login
-    console.log('🌐 Cargando página de login...');
+    // 2. Proceso de login (MANTENIDO COMO FUNCIONA ACTUALMENTE)
+    console.log('🔐 Iniciando sesión...');
     await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}0-pagina-login.png` });
-
-    // 3. Verificar elementos del formulario
-    console.log('🔍 Verificando formulario...');
-    await page.waitForSelector('#username', { visible: true, timeout: 10000 });
-    await page.waitForSelector('#password', { visible: true, timeout: 10000 });
-    await page.waitForSelector('#loginbtn', { visible: true, timeout: 10000 });
-
-    // 4. Insertar credenciales
-    console.log('⌨️ Escribiendo credenciales...');
+    
     await page.type('#username', process.env.MOODLE_USER, { delay: 50 });
     await page.type('#password', process.env.MOODLE_PASS, { delay: 50 });
     await page.screenshot({ path: `${SCREENSHOTS_DIR}1-credenciales-llenadas.png` });
-
-    // 5. Enviar formulario
-    console.log('🚀 Enviando formulario...');
+    
     await Promise.all([
       page.click('#loginbtn'),
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
     ]);
 
-    // 6. Verificación de login
-    console.log('✅ Verificando login...');
+    // Verificación de login exitoso
     const currentUrl = page.url();
-    console.log('🔗 URL actual:', currentUrl);
-
     if (currentUrl.includes('login') || await page.$('#loginerrormessage')) {
       const errorMsg = await page.evaluate(() => {
         const errElement = document.querySelector('#loginerrormessage');
@@ -68,77 +59,130 @@ const fs = require('fs');
     await page.screenshot({ path: `${SCREENSHOTS_DIR}2-login-exitoso.png` });
     console.log('🎉 ¡Login exitoso confirmado!');
 
-  // [El código existente de login hasta la verificación exitosa...]
-console.log('🎉 ¡Login exitoso confirmado!');
-
-// 7. Navegar al dashboard de cursos
-console.log('📚 Accediendo al listado de cursos...');
-await page.goto(`${process.env.MOODLE_URL}/my/`, {
-  waitUntil: 'networkidle2',
-  timeout: 30000
-});
-await page.screenshot({ path: `${SCREENSHOTS_DIR}3-listado-cursos.png` });
-
-// 8. Obtener enlaces a cursos (selector mejorado)
-console.log('🔍 Buscando cursos...');
-const cursos = await page.$$eval('a.aalink.coursename.mr-2.mb-1', links => 
-  links.map(link => {
-    const url = new URL(link.href);
-    return {
-      nombre: link.textContent.trim(),
-      url: link.href,
-      id: url.searchParams.get('id') || '0'
-    };
-  })
-);
-
-console.log(`📊 Cursos encontrados: ${cursos.length}`);
-if (cursos.length === 0) {
-  // Guardar HTML para diagnóstico
-  const html = await page.content();
-  fs.writeFileSync(`${SCREENSHOTS_DIR}listado-cursos.html`, html);
-  throw new Error('No se encontraron cursos - HTML guardado para diagnóstico');
-}
-
-// 9. Procesar cada curso
-for (const [index, curso] of cursos.entries()) {
-  try {
-    console.log(`\n🔄 [${index + 1}/${cursos.length}] Ingresando a: ${curso.nombre}`);
-    
-    // Navegar al curso
-    await page.goto(curso.url, {
+    // 3. Acceso a cursos (VERSIÓN MEJORADA)
+    console.log('📚 Cargando listado de cursos...');
+    await page.goto(`${process.env.MOODLE_URL}/my/`, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
-    
-    // Esperar a que cargue el contenido principal
-    await page.waitForSelector('#region-main', { timeout: 15000 });
-    
-    // Tomar captura del curso
-    await page.screenshot({
-      path: `${SCREENSHOTS_DIR}4-curso-${index + 1}-${curso.id}.png`,
-      fullPage: true
-    });
-    console.log(`📸 Captura guardada: 4-curso-${index + 1}-${curso.id}.png`);
-    
-    // Pequeña pausa entre cursos
-    await page.waitForTimeout(2000);
-    
-  } catch (error) {
-    console.error(`⚠️ Error en curso ${curso.nombre}:`, error.message);
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}error-curso-${index + 1}.png` });
-  }
-}
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}3-listado-cursos.png` });
 
-console.log('✅ Proceso de cursos completado');
-// [El resto de tu código existente...]
+    // Estrategia múltiple para encontrar cursos
+    console.log('🔍 Buscando cursos con 3 métodos diferentes...');
+    let cursos = [];
+
+    // Método 1: Selector exacto que me proporcionaste
+    try {
+      cursos = await page.$$eval('a.aalink.coursename.mr-2.mb-1', links => 
+        links.map(link => {
+          const url = new URL(link.href);
+          return {
+            nombre: link.textContent.trim(),
+            url: link.href,
+            id: url.searchParams.get('id'),
+            html: link.outerHTML
+          };
+        })
+      );
+      console.log(`📌 (Método 1) Cursos encontrados: ${cursos.length}`);
+    } catch (error) {
+      console.log('⚠️ Método 1 falló:', error.message);
+    }
+
+    // Método 2: Búsqueda por texto en todo el HTML
+    if (cursos.length === 0) {
+      console.log('🔍 Intentando método alternativo (búsqueda por texto)...');
+      const pageContent = await page.content();
+      
+      // Patrón regex mejorado para encontrar enlaces
+      const regex = /<a [^>]*class="[^"]*aalink[^"]*"[^>]*>([^<]*Prevención y Abordaje[^<]*)<\/a>/gi;
+      const matches = [...pageContent.matchAll(regex)];
+      
+      cursos = matches.map(match => {
+        const urlMatch = match[0].match(/href="([^"]*)"/);
+        return {
+          nombre: match[1].trim(),
+          url: urlMatch ? urlMatch[1] : '',
+          id: urlMatch ? new URL(urlMatch[1]).searchParams.get('id') : '0'
+        };
+      }).filter(curso => curso.url !== '');
+      
+      console.log(`📌 (Método 2) Cursos encontrados: ${cursos.length}`);
+    }
+
+    // Método 3: Scroll y nueva búsqueda (para contenido dinámico)
+    if (cursos.length === 0) {
+      console.log('🔄 Intentando con scroll y espera...');
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(3000);
+      
+      cursos = await page.$$eval('a', links => 
+        links
+          .filter(link => link.textContent.includes('Prevención y Abordaje'))
+          .map(link => {
+            const url = new URL(link.href);
+            return {
+              nombre: link.textContent.trim(),
+              url: link.href,
+              id: url.searchParams.get('id')
+            };
+          })
+      );
+      console.log(`📌 (Método 3) Cursos encontrados: ${cursos.length}`);
+    }
+
+    // Verificación final
+    if (cursos.length === 0) {
+      // Guardar recursos para diagnóstico
+      fs.writeFileSync(`${SCREENSHOTS_DIR}debug-page.html`, await page.content());
+      await page.screenshot({ path: `${SCREENSHOTS_DIR}debug-fullpage.png`, fullPage: true });
+      throw new Error('No se encontraron cursos después de 3 métodos de búsqueda. Se guardaron archivos para diagnóstico.');
+    }
+
+    console.log('\n📊 Cursos identificados:');
+    cursos.forEach((curso, i) => {
+      console.log(`${i + 1}. ${curso.nombre} (ID: ${curso.id})`);
+    });
+
+    // 4. Procesamiento de cada curso
+    for (const [index, curso] of cursos.entries()) {
+      console.log(`\n🔄 [${index + 1}/${cursos.length}] Procesando: ${curso.nombre}`);
+      
+      try {
+        // Navegación al curso
+        await page.goto(curso.url, {
+          waitUntil: 'networkidle2',
+          timeout: 30000
+        });
+        
+        // Esperar elementos clave del curso
+        await page.waitForSelector('#region-main', { timeout: 15000 });
+        
+        // Captura del curso
+        await page.screenshot({
+          path: `${SCREENSHOTS_DIR}4-curso-${index + 1}-${curso.id}.png`,
+          fullPage: true
+        });
+        console.log('📸 Captura del curso guardada');
+
+        // Verificación adicional
+        const tituloCurso = await page.title();
+        console.log('📌 Título del curso:', tituloCurso);
+
+        // Pequeña pausa entre cursos
+        await page.waitForTimeout(2000);
+
+      } catch (error) {
+        console.error(`⚠️ Error en curso "${curso.nombre}":`, error.message);
+        await page.screenshot({ path: `${SCREENSHOTS_DIR}error-curso-${index + 1}.png` });
+      }
+    }
+
+    console.log('\n✅ Todos los cursos procesados exitosamente');
 
   } catch (error) {
     console.error('❌ ERROR CRÍTICO:', error);
     await page.screenshot({ path: `${SCREENSHOTS_DIR}error-final.png` });
-    const htmlContent = await page.content();
-    fs.writeFileSync(`${SCREENSHOTS_DIR}error-page.html`, htmlContent);
-    console.log('💾 HTML de error guardado');
   } finally {
     await browser.close();
     console.log('🏁 Proceso finalizado');
