@@ -9,6 +9,7 @@ on:
 jobs:
   login:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Timeout total para todo el job
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -16,7 +17,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install puppeteer
+        run: npm install puppeteer@latest
       - name: Create screenshots folder
         run: mkdir -p screenshots
       - name: Run Login
@@ -30,4 +31,3 @@ jobs:
         with:
           name: capturas-cursos
           path: screenshots/*.png
-        if: always()  # Sube artifacts aunque falle
