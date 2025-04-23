@@ -1,10 +1,7 @@
 name: Moodle Auto Login
 
 on:
-  schedule:
-    - cron: '0 11 * * *'  # 8 AM Argentina
-    - cron: '0 23 * * *'  # 8 PM Argentina
-  workflow_dispatch:
+  workflow_dispatch:  # Solo ejecución manual hasta que funcione
 
 jobs:
   login:
@@ -23,10 +20,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgbm-dev wget
-          npm install puppeteer --no-package-lock
+          npm install puppeteer@19.11.1 --no-package-lock
           mkdir -p capturas
 
-      - name: Run Moodle Bot
+      - name: Run Moodle Bot (Debug Mode)
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
@@ -39,4 +36,4 @@ jobs:
           name: moodle-debug-data
           path: |
             capturas/*.png
-            capturas/page-content.html
+            capturas/*.html
