@@ -18,28 +18,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'  # Elimina esta línea si no quieres usar cache
 
-      - name: Install Puppeteer with dependencies
+      - name: Install dependencies
         run: |
-          # Instalar dependencias del sistema primero
           sudo apt-get update
           sudo apt-get install -y libgbm-dev wget
-          
-          # Instalar Puppeteer sin generar package-lock
-          npm install puppeteer --no-package-lock --no-save
-          
-          # Crear estructura de archivos necesaria
+          npm install puppeteer --no-package-lock
           mkdir -p capturas
 
-      - name: Run Moodle Bot
+      - name: Run Moodle Login Bot
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
           MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
           MOODLE_URL: ${{ secrets.MOODLE_URL }}
 
-      - name: Upload Screenshots
+      - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
           name: moodle-screenshots
