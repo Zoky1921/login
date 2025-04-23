@@ -1,7 +1,10 @@
 name: Moodle Auto Login
 
 on:
-  workflow_dispatch:  # Ejecución manual primero para pruebas
+  schedule:
+    - cron: '0 11 * * *'  # 8 AM Argentina
+    - cron: '0 23 * * *'  # 8 PM Argentina
+  workflow_dispatch:
 
 jobs:
   login:
@@ -23,7 +26,7 @@ jobs:
           npm install puppeteer --no-package-lock
           mkdir -p capturas
 
-      - name: Run Moodle Bot (Debug Mode)
+      - name: Run Moodle Bot
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
@@ -33,7 +36,7 @@ jobs:
       - name: Upload debug files
         uses: actions/upload-artifact@v4
         with:
-          name: moodle-debug-info
+          name: moodle-debug-data
           path: |
             capturas/*.png
-            capturas/*.html
+            capturas/page-content.html
