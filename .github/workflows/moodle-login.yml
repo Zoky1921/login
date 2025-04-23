@@ -24,7 +24,7 @@ jobs:
           MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
           MOODLE_URL: ${{ secrets.MOODLE_URL }}
       - name: Upload screenshots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Changed from v3 to v4
         with:
           name: capturas-cursos
           path: |
