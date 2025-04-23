@@ -2,56 +2,58 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 (async () => {
-  // Configuración
-  const TIEMPO_PERMANENCIA = 2 * 60 * 1000; // 2 minutos en milisegundos
   const browser = await puppeteer.launch({
     headless: "new",
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   const page = await browser.newPage();
   
   try {
-    console.log('🔹 Iniciando proceso...');
-    
     // 1. Login
-    await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
-    });
-    
+    await page.goto(`${process.env.MOODLE_URL}/login/index.php`, { waitUntil: 'networkidle2' });
     await page.type('#username', process.env.MOODLE_USER);
     await page.type('#password', process.env.MOODLE_PASS);
     await page.click('#loginbtn');
+    await page.waitForNavigation();
+
+    console.log('✅ Login exitoso');
+
+    // 2. Navegar al dashboard de cursos
+    await page.goto(`${process.env.MOODLE_URL}/my/`, { waitUntil: 'networkidle2' });
     
-    console.log('✅ Login exitoso. Manteniendo sesión 2 minutos...');
-    
-    // 2. Temporizador visual (opcional)
-    const interval = setInterval(() => {
-      const tiempoRestante = Math.ceil((TIEMPO_PERMANENCIA - (Date.now() - startTime)) / 1000);
-      console.log(`⏳ Tiempo restante: ${tiempoRestante}s`);
-    }, 10000);
-    
-    const startTime = Date.now();
-    
-    // 3. Espera activa (2 minutos)
-    await new Promise(resolve => setTimeout(resolve, TIEMPO_PERMANENCIA));
-    
-    clearInterval(interval);
-    console.log('🕒 Tiempo completado. Cerrando sesión...');
-    
-    // 4. Captura final (opcional)
-    await page.screenshot({ path: 'final.png' });
+    // 3. Buscar todos los enlaces a cursos
+    const cursos = await page.$$eval('a.aalink.coursename', links => 
+      links
+        .filter(link => link.textContent.includes('Prevención y Abordaje en Violencia de Género'))
+        .map(link => ({
+          nombre: link.textContent.trim(),
+          url: link.href
+        }))
+    );
+
+    console.log(`📚 Cursos encontrados: ${cursos.length}`);
+
+    // 4. Procesar cada curso
+    for (const [index, curso] of cursos.entries()) {
+      console.log(`\n🔄 Ingresando a: ${curso.nombre}`);
+      await page.goto(curso.url, { waitUntil: 'domcontentloaded' });
+      
+      // Captura completa de la página (ajusta el viewport si es necesario)
+      await page.setViewport({ width: 1200, height: 800 });
+      await page.screenshot({
+        path: `curso-${index + 1}.png`,
+        fullPage: true
+      });
+
+      console.log(`📸 Captura guardada: curso-${index + 1}.png`);
+      await page.waitForTimeout(2000); // Espera entre cursos
+    }
 
   } catch (error) {
     console.error('❌ Error:', error);
     await page.screenshot({ path: 'error.png' });
   } finally {
     await browser.close();
-    console.log('🏁 Proceso finalizado');
   }
 })();
