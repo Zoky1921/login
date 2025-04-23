@@ -9,7 +9,6 @@ on:
 jobs:
   login:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Timeout total para todo el job
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -17,9 +16,9 @@ jobs:
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install puppeteer@latest
+        run: npm install puppeteer
       - name: Create screenshots folder
-        run: mkdir -p screenshots
+        run: mkdir -p capturas
       - name: Run Login
         run: node moodle-login.js
         env:
@@ -29,5 +28,5 @@ jobs:
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: capturas-cursos
-          path: screenshots/*.png
+          name: capturas-moodle
+          path: capturas/*.png
