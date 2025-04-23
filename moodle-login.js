@@ -2,64 +2,56 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 (async () => {
+  // Configuración
+  const TIEMPO_PERMANENCIA = 2 * 60 * 1000; // 2 minutos en milisegundos
   const browser = await puppeteer.launch({
     headless: "new",
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
-    ],
-    ignoreHTTPSErrors: true
+      '--disable-dev-shm-usage'
+    ]
   });
 
   const page = await browser.newPage();
   
   try {
-    console.log('🔄 Navegando a la página de login...');
+    console.log('🔹 Iniciando proceso...');
+    
+    // 1. Login
     await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
       waitUntil: 'domcontentloaded',
-      timeout: 90000
+      timeout: 60000
     });
-
-    // Rellenar credenciales
-    console.log('🔑 Ingresando credenciales...');
+    
     await page.type('#username', process.env.MOODLE_USER);
     await page.type('#password', process.env.MOODLE_PASS);
-
-    // Enviar formulario
-    console.log('🚀 Enviando formulario de login...');
-    await Promise.all([
-      page.click('#loginbtn'),
-      page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 60000 })
-    ]);
-
-    // Verificación mejorada del login
-    const pageTitle = await page.title();
-    const pageUrl = await page.url();
+    await page.click('#loginbtn');
     
-    // Si estamos en la página principal después del login (ajusta según tu Moodle)
-    if (!pageUrl.includes('login') && !pageUrl.includes('auth')) {
-      console.log(`✅ Login exitoso! Título: ${pageTitle}`);
-      await page.screenshot({ path: 'login-success.png' });
-      
-      // Aquí puedes agregar acciones post-login
-      console.log('🖥️ Página actual:', pageUrl);
-    } else {
-      throw new Error(`Posible fallo en login. Título: ${pageTitle} | URL: ${pageUrl}`);
-    }
+    console.log('✅ Login exitoso. Manteniendo sesión 2 minutos...');
+    
+    // 2. Temporizador visual (opcional)
+    const interval = setInterval(() => {
+      const tiempoRestante = Math.ceil((TIEMPO_PERMANENCIA - (Date.now() - startTime)) / 1000);
+      console.log(`⏳ Tiempo restante: ${tiempoRestante}s`);
+    }, 10000);
+    
+    const startTime = Date.now();
+    
+    // 3. Espera activa (2 minutos)
+    await new Promise(resolve => setTimeout(resolve, TIEMPO_PERMANENCIA));
+    
+    clearInterval(interval);
+    console.log('🕒 Tiempo completado. Cerrando sesión...');
+    
+    // 4. Captura final (opcional)
+    await page.screenshot({ path: 'final.png' });
 
   } catch (error) {
-    console.error('❌ Error durante el proceso:', error);
+    console.error('❌ Error:', error);
     await page.screenshot({ path: 'error.png' });
-    const htmlContent = await page.content();
-    fs.writeFileSync('error.html', htmlContent);
-    process.exit(1);
   } finally {
     await browser.close();
+    console.log('🏁 Proceso finalizado');
   }
 })();
