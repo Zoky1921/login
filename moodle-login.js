@@ -18,19 +18,12 @@ const fs = require('fs');
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
 
-  // Configurar timeout global
-  page.setDefaultNavigationTimeout(60000);
-  page.setDefaultTimeout(30000);
-
   try {
-    // 1. Limpieza exhaustiva
-    console.log('🧹 Limpiando cookies y caché...');
-    await page.deleteCookie();
-    await page.goto('about:blank');
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+    // 1. Limpieza básica (sin localStorage)
+    console.log('🧹 Limpiando cookies...');
+    const client = await page.target().createCDPSession();
+    await client.send('Network.clearBrowserCookies');
+    await client.send('Network.clearBrowserCache');
 
     // 2. Navegación a login
     console.log('🌐 Cargando página de login...');
@@ -41,48 +34,48 @@ const fs = require('fs');
     await page.screenshot({ path: `${SCREENSHOTS_DIR}0-pagina-login.png` });
 
     // 3. Verificar elementos del formulario
-    console.log('🔍 Verificando formulario de login...');
+    console.log('🔍 Verificando formulario...');
     await page.waitForSelector('#username', { visible: true, timeout: 10000 });
     await page.waitForSelector('#password', { visible: true, timeout: 10000 });
     await page.waitForSelector('#loginbtn', { visible: true, timeout: 10000 });
 
-    // 4. Rellenar credenciales con delays humanos
+    // 4. Insertar credenciales
     console.log('⌨️ Escribiendo credenciales...');
-    await page.type('#username', process.env.MOODLE_USER, { delay: 100 });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}1-usuario-insertado.png` });
-    await page.type('#password', process.env.MOODLE_PASS, { delay: 100 });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}2-password-insertado.png` });
+    await page.type('#username', process.env.MOODLE_USER, { delay: 50 });
+    await page.type('#password', process.env.MOODLE_PASS, { delay: 50 });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}1-credenciales-llenadas.png` });
 
     // 5. Enviar formulario
     console.log('🚀 Enviando formulario...');
-    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
-    await page.click('#loginbtn');
-    await navigationPromise;
+    await Promise.all([
+      page.click('#loginbtn'),
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
+    ]);
 
-    // 6. Verificación exhaustiva de login
-    console.log('✅ Verificando login exitoso...');
+    // 6. Verificación de login
+    console.log('✅ Verificando login...');
     const currentUrl = page.url();
     console.log('🔗 URL actual:', currentUrl);
 
     if (currentUrl.includes('login') || await page.$('#loginerrormessage')) {
-      const errorMsg = await page.$eval('#loginerrormessage', el => el.textContent.trim()).catch(() => 'Mensaje no encontrado');
+      const errorMsg = await page.evaluate(() => {
+        const errElement = document.querySelector('#loginerrormessage');
+        return errElement ? errElement.textContent.trim() : 'Error desconocido';
+      }).catch(() => 'No se pudo obtener mensaje de error');
       throw new Error(`Fallo en login: ${errorMsg}`);
     }
 
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}3-login-exitoso.png` });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}2-login-exitoso.png` });
     console.log('🎉 ¡Login exitoso confirmado!');
 
-    // 7. Continuar con el resto del proceso (cursos, etc.)
-    // ... [resto del código para procesar cursos]
+    // [Aquí iría el resto de tu código para procesar cursos]
 
   } catch (error) {
     console.error('❌ ERROR CRÍTICO:', error);
     await page.screenshot({ path: `${SCREENSHOTS_DIR}error-final.png` });
-    
-    // Capturar HTML de la página de error
     const htmlContent = await page.content();
     fs.writeFileSync(`${SCREENSHOTS_DIR}error-page.html`, htmlContent);
-    console.log('💾 HTML de error guardado como error-page.html');
+    console.log('💾 HTML de error guardado');
   } finally {
     await browser.close();
     console.log('🏁 Proceso finalizado');
