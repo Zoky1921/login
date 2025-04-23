@@ -4,43 +4,44 @@ on:
   schedule:
     - cron: '0 11 * * *'  # 8 AM Argentina (UTC-3)
     - cron: '0 23 * * *'  # 8 PM Argentina (UTC-3)
-  workflow_dispatch:       # Permite ejecución manual
+  workflow_dispatch:
 
 jobs:
   login:
     runs-on: ubuntu-latest
-    timeout-minutes: 15    # Timeout total para todo el job
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'
+          cache: 'npm'  # Elimina esta línea si no quieres usar cache
 
-      - name: Install dependencies
+      - name: Install Puppeteer with dependencies
         run: |
-          npm install puppeteer
+          # Instalar dependencias del sistema primero
           sudo apt-get update
-          sudo apt-get install -y libgbm-dev
+          sudo apt-get install -y libgbm-dev wget
+          
+          # Instalar Puppeteer sin generar package-lock
+          npm install puppeteer --no-package-lock --no-save
+          
+          # Crear estructura de archivos necesaria
+          mkdir -p capturas
 
-      - name: Create screenshots directory
-        run: mkdir -p capturas
-
-      - name: Run Moodle Login Bot
+      - name: Run Moodle Bot
         run: node moodle-login.js
         env:
           MOODLE_USER: ${{ secrets.MOODLE_USER }}
           MOODLE_PASS: ${{ secrets.MOODLE_PASS }}
           MOODLE_URL: ${{ secrets.MOODLE_URL }}
 
-      - name: Upload screenshots
-        if: always()
+      - name: Upload Screenshots
         uses: actions/upload-artifact@v4
         with:
           name: moodle-screenshots
           path: capturas/*.png
-          retention-days: 3
+          if-no-files-found: warn
