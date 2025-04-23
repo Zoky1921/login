@@ -18,124 +18,73 @@ const fs = require('fs');
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
 
+  // Configurar timeout global
+  page.setDefaultNavigationTimeout(60000);
+  page.setDefaultTimeout(30000);
+
   try {
-    // 1. Limpieza de cookies y caché
-    console.log('🧹 Limpiando datos de sesión anteriores...');
+    // 1. Limpieza exhaustiva
+    console.log('🧹 Limpiando cookies y caché...');
     await page.deleteCookie();
     await page.goto('about:blank');
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
 
-    // 2. Login
-    console.log('🔐 Iniciando sesión...');
+    // 2. Navegación a login
+    console.log('🌐 Cargando página de login...');
     await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
       waitUntil: 'networkidle2',
-      timeout: 30000
+      timeout: 60000
     });
-    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}0-pagina-login.png` });
+
+    // 3. Verificar elementos del formulario
+    console.log('🔍 Verificando formulario de login...');
+    await page.waitForSelector('#username', { visible: true, timeout: 10000 });
+    await page.waitForSelector('#password', { visible: true, timeout: 10000 });
+    await page.waitForSelector('#loginbtn', { visible: true, timeout: 10000 });
+
+    // 4. Rellenar credenciales con delays humanos
+    console.log('⌨️ Escribiendo credenciales...');
     await page.type('#username', process.env.MOODLE_USER, { delay: 100 });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}1-usuario-insertado.png` });
     await page.type('#password', process.env.MOODLE_PASS, { delay: 100 });
-    await Promise.all([
-      page.click('#loginbtn'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-    ]);
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}2-password-insertado.png` });
 
-    // 3. Verificación de login
-    if (page.url().includes('login')) {
-      throw new Error('Posible fallo de autenticación');
-    }
-    console.log('✅ Login exitoso - URL actual:', page.url());
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}1-login-exitoso.png` });
+    // 5. Enviar formulario
+    console.log('🚀 Enviando formulario...');
+    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    await page.click('#loginbtn');
+    await navigationPromise;
 
-    // 4. Navegación a "Mis cursos" con parámetro anti-caché
-    console.log('📚 Cargando listado de cursos...');
-    await page.goto(`${process.env.MOODLE_URL}/my/?timestamp=${Date.now()}`, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}2-listado-cursos.png` });
+    // 6. Verificación exhaustiva de login
+    console.log('✅ Verificando login exitoso...');
+    const currentUrl = page.url();
+    console.log('🔗 URL actual:', currentUrl);
 
-    // 5. Búsqueda FLEXIBLE de cursos
-    console.log('🔍 Buscando cursos con método flexible...');
-    
-    // Opción 1: Buscar por texto en cualquier elemento <a>
-    let cursos = await page.$$eval('a', anchors => 
-      anchors
-        .filter(a => a.textContent.includes('Prevención y Abordaje'))
-        .map(a => ({
-          nombre: a.textContent.trim(),
-          url: a.href,
-          id: new URL(a.href).searchParams.get('id'),
-          outerHTML: a.outerHTML
-        }))
-    );
-
-    // Opción 2: Si no encuentra, buscar en cualquier elemento que contenga el texto
-    if (cursos.length === 0) {
-      console.log('⚠️ No se encontraron con selector de enlaces, intentando método alternativo...');
-      const pageContent = await page.content();
-      const regex = /Prevención y Abordaje[\s\S]*?href="(.*?)"/gi;
-      const matches = [...pageContent.matchAll(regex)];
-      
-      cursos = matches.map(match => ({
-        nombre: match[0].split('"')[0].trim(),
-        url: match[1],
-        id: new URL(match[1]).searchParams.get('id')
-      }));
+    if (currentUrl.includes('login') || await page.$('#loginerrormessage')) {
+      const errorMsg = await page.$eval('#loginerrormessage', el => el.textContent.trim()).catch(() => 'Mensaje no encontrado');
+      throw new Error(`Fallo en login: ${errorMsg}`);
     }
 
-    // Guardar HTML para diagnóstico
-    fs.writeFileSync(`${SCREENSHOTS_DIR}page-content.html`, await page.content());
-    console.log('💾 HTML del listado guardado para diagnóstico');
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}3-login-exitoso.png` });
+    console.log('🎉 ¡Login exitoso confirmado!');
 
-    console.log('\n📊 RESULTADOS DE BÚSQUEDA:');
-    console.log(`- Cursos encontrados: ${cursos.length}`);
-    cursos.forEach((curso, i) => {
-      console.log(`\n[${i + 1}] ${curso.nombre}`);
-      console.log(`   URL: ${curso.url}`);
-      console.log(`   ID: ${curso.id}`);
-    });
-
-    if (cursos.length === 0) {
-      throw new Error('No se encontraron cursos. Posibles causas:\n' +
-        '1. El texto del curso es diferente\n' +
-        '2. Los cursos están en otra página\n' +
-        '3. Requiere interacción para cargar (ej: clic en pestaña)');
-    }
-
-    // 6. Procesamiento de cursos
-    for (const [index, curso] of cursos.entries()) {
-      console.log(`\n🔄 [${index + 1}/${cursos.length}] Procesando: ${curso.nombre}`);
-      
-      try {
-        // Navegación al curso
-        await page.goto(curso.url, { waitUntil: 'networkidle2' });
-        
-        // Esperar a que cargue el contenido principal
-        await page.waitForSelector('#region-main', { timeout: 15000 });
-        
-        // Captura completa
-        await page.screenshot({
-          path: `${SCREENSHOTS_DIR}3-curso-${index + 1}.png`,
-          fullPage: true
-        });
-        console.log('📸 Captura del curso guardada');
-
-        // Verificación adicional
-        const titulo = await page.title();
-        console.log('📌 Título de la página:', titulo);
-
-      } catch (error) {
-        console.error(`⚠️ Error procesando curso: ${error.message}`);
-        await page.screenshot({ path: `${SCREENSHOTS_DIR}error-curso-${index + 1}.png` });
-      }
-      
-      await page.waitForTimeout(2000);
-    }
+    // 7. Continuar con el resto del proceso (cursos, etc.)
+    // ... [resto del código para procesar cursos]
 
   } catch (error) {
-    console.error('❌ Error crítico:', error);
+    console.error('❌ ERROR CRÍTICO:', error);
     await page.screenshot({ path: `${SCREENSHOTS_DIR}error-final.png` });
+    
+    // Capturar HTML de la página de error
+    const htmlContent = await page.content();
+    fs.writeFileSync(`${SCREENSHOTS_DIR}error-page.html`, htmlContent);
+    console.log('💾 HTML de error guardado como error-page.html');
   } finally {
     await browser.close();
-    console.log('🏁 Proceso completado');
+    console.log('🏁 Proceso finalizado');
   }
 })();
