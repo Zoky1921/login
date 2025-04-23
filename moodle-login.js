@@ -2,7 +2,6 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 (async () => {
-  // Configuración del navegador con opciones para CI
   const browser = await puppeteer.launch({
     headless: "new",
     args: [
@@ -24,7 +23,7 @@ const fs = require('fs');
     console.log('🔄 Navegando a la página de login...');
     await page.goto(`${process.env.MOODLE_URL}/login/index.php`, {
       waitUntil: 'domcontentloaded',
-      timeout: 90000  // 90 segundos de timeout
+      timeout: 90000
     });
 
     // Rellenar credenciales
@@ -39,13 +38,19 @@ const fs = require('fs');
       page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 60000 })
     ]);
 
-    // Verificar login exitoso
+    // Verificación mejorada del login
     const pageTitle = await page.title();
-    if (pageTitle.includes('Dashboard') || pageTitle.includes('Inicio')) {
-      console.log('✅ Login exitoso!');
+    const pageUrl = await page.url();
+    
+    // Si estamos en la página principal después del login (ajusta según tu Moodle)
+    if (!pageUrl.includes('login') && !pageUrl.includes('auth')) {
+      console.log(`✅ Login exitoso! Título: ${pageTitle}`);
       await page.screenshot({ path: 'login-success.png' });
+      
+      // Aquí puedes agregar acciones post-login
+      console.log('🖥️ Página actual:', pageUrl);
     } else {
-      throw new Error(`Posible fallo en login. Título: ${pageTitle}`);
+      throw new Error(`Posible fallo en login. Título: ${pageTitle} | URL: ${pageUrl}`);
     }
 
   } catch (error) {
